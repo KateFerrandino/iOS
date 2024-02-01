@@ -21,7 +21,7 @@ import BrowserServicesKit
 
 struct SettingsState {
     
-    enum PrivacyProSubscriptionStatus {
+    enum SubscriptionStatus {
         case active, inactive, unknown
     }
     
@@ -40,7 +40,7 @@ struct SettingsState {
         var status: String
     }
     
-    struct PrivacyPro {
+    struct Subscription {
         var enabled: Bool
         var canPurchase: Bool
         var hasActiveSubscription: Bool
@@ -78,16 +78,16 @@ struct SettingsState {
     // Features
     var debugModeEnabled: Bool
     var voiceSearchEnabled: Bool
-    var speechRecognitionEnabled: Bool
+    var speechRecognitionAvailable: Bool // Returns if the device has speech recognition available
     var loginsEnabled: Bool
     
     // Network Protection properties
     var networkProtection: NetworkProtection
     
     // Subscriptions Properties
-    var privacyPro: PrivacyPro
+    var subscription: Subscription
     
-    // Sync Propertiers
+    // Sync Properties
     var sync: SyncSettings
 
     static var defaults: SettingsState {
@@ -108,10 +108,10 @@ struct SettingsState {
             version: "0.0.0.0",
             debugModeEnabled: false,
             voiceSearchEnabled: false,
-            speechRecognitionEnabled: false,
+            speechRecognitionAvailable: false,
             loginsEnabled: false,
             networkProtection: NetworkProtection(enabled: false, status: ""),
-            privacyPro: PrivacyPro(enabled: false, canPurchase: false,
+            subscription: Subscription(enabled: false, canPurchase: false,
                                    hasActiveSubscription: false),
             sync: SyncSettings(enabled: false, title: "")
         )

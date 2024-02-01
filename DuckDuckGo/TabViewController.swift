@@ -110,6 +110,7 @@ class TabViewController: UIViewController {
     private var httpsForced: Bool = false
     private var lastUpgradedURL: URL?
     private var lastError: Error?
+    private var lastHttpStatusCode: Int?
     private var shouldReloadOnError = false
     private var failingUrls = Set<String>()
     private var urlProvidedBasicAuthCredential: (credential: URLCredential, url: URL)?
@@ -415,7 +416,16 @@ class TabViewController: UIViewController {
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webViewContainer.addSubview(webView)
+        webView.scrollView.refreshControl = UIRefreshControl()
+        webView.scrollView.refreshControl?.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.reload()
+            Pixel.fire(pixel: .pullToRefresh)
+        }, for: .valueChanged)
 
+        webView.scrollView.refreshControl?.backgroundColor = .systemBackground
+        webView.scrollView.refreshControl?.tintColor = .label
+                
         updateContentMode()
 
         if #available(iOS 16.4, *) {
@@ -646,6 +656,7 @@ class TabViewController: UIViewController {
     
     private func hideProgressIndicator() {
         progressWorker.didFinishLoading()
+        webView.scrollView.refreshControl?.endRefreshing()
     }
 
     public func reload() {
@@ -712,7 +723,6 @@ class TabViewController: UIViewController {
                 controller.popoverPresentationController?.sourceRect = iconView.bounds
             }
             privacyDashboard = controller
-            privacyDashboard?.brokenSiteInfo = getCurrentWebsiteInfo()
         }
         
         if let controller = segue.destination as? FullscreenDaxDialogViewController {
@@ -739,7 +749,8 @@ class TabViewController: UIViewController {
                                        privacyInfo: privacyInfo,
                                        privacyConfigurationManager: ContentBlocking.shared.privacyConfigurationManager,
                                        contentBlockingManager: ContentBlocking.shared.contentBlockingManager,
-                                       initMode: .privacyDashboard)
+                                       initMode: .privacyDashboard,
+                                       breakageAdditionalInfo: makeBreakageAdditionalInfo())
     }
     
     private func addTextSizeObserver() {
@@ -902,27 +913,24 @@ class TabViewController: UIViewController {
         webView.removeObserver(self, forKeyPath: #keyPath(WKWebView.canGoBack))
         webView.removeObserver(self, forKeyPath: #keyPath(WKWebView.title))
     }
+
+    public func makeBreakageAdditionalInfo() -> PrivacyDashboardViewController.BreakageAdditionalInfo? {
         
-    public func getCurrentWebsiteInfo() -> BrokenSiteInfo {
-        let blockedTrackerDomains = privacyInfo?.trackerInfo.trackersBlocked.compactMap { $0.domain } ?? []
-
-        let configuration = ContentBlocking.shared.privacyConfigurationManager.privacyConfig
-        let protectionsState = configuration.isFeature(.contentBlocking, enabledForDomain: url?.host)
-
-        return BrokenSiteInfo(url: url,
-                              httpsUpgrade: httpsForced,
-                              blockedTrackerDomains: blockedTrackerDomains,
-                              installedSurrogates: privacyInfo?.trackerInfo.installedSurrogates.map { $0 } ?? [],
-                              isDesktop: tabModel.isDesktop,
-                              tdsETag: ContentBlocking.shared.contentBlockingManager.currentMainRules?.etag ?? "",
-                              ampUrl: linkProtection.lastAMPURLString,
-                              urlParametersRemoved: linkProtection.urlParametersRemoved,
-                              protectionsState: protectionsState)
+        guard let currentURL = url else {
+            return nil
+        }
+        return PrivacyDashboardViewController.BreakageAdditionalInfo(currentURL: currentURL,
+                                                                     httpsForced: httpsForced,
+                                                                     ampURLString: linkProtection.lastAMPURLString ?? "",
+                                                                     urlParametersRemoved: linkProtection.urlParametersRemoved,
+                                                                     isDesktop: tabModel.isDesktop,
+                                                                     error: lastError,
+                                                                     httpStatusCode: lastHttpStatusCode)
     }
-    
+
     public func print() {
         let printFormatter = webView.viewPrintFormatter()
-        
+
         let printInfo = UIPrintInfo(dictionary: nil)
         printInfo.jobName = Bundle.main.infoDictionary!["CFBundleName"] as? String ?? "DuckDuckGo"
         printInfo.outputType = .general
@@ -1042,7 +1050,9 @@ extension TabViewController: WKNavigationDelegate {
         
         appRatingPrompt.registerUsage()
      
-        if let scene = self.view.window?.windowScene, appRatingPrompt.shouldPrompt() {
+        if let scene = self.view.window?.windowScene,
+           appRatingPrompt.shouldPrompt(),
+           webView.url?.isDuckDuckGoSearch == true {
             SKStoreReviewController.requestReview(in: scene)
             appRatingPrompt.shown()
         }
@@ -1055,6 +1065,7 @@ extension TabViewController: WKNavigationDelegate {
 
         let httpResponse = navigationResponse.response as? HTTPURLResponse
         let isSuccessfulResponse = httpResponse?.isSuccessfulResponse ?? false
+        lastHttpStatusCode = httpResponse?.statusCode
 
         let didMarkAsInternal = internalUserDecider.markUserAsInternalIfNeeded(forUrl: webView.url, response: httpResponse)
         if didMarkAsInternal {
@@ -1174,7 +1185,7 @@ extension TabViewController: WKNavigationDelegate {
     
     private func onWebpageDidFinishLoading() {
         os_log("webpageLoading finished", log: .generalLog, type: .debug)
-                
+        
         tabModel.link = link
         delegate?.tabLoadingStateDidChange(tab: self)
 
@@ -2289,6 +2300,11 @@ extension TabViewController: Themable {
         error?.backgroundColor = theme.backgroundColor
         errorHeader.textColor = theme.barTintColor
         errorMessage.textColor = theme.barTintColor
+        
+        if let webView {
+            webView.scrollView.refreshControl?.backgroundColor = theme.mainViewBackgroundColor
+            webView.scrollView.refreshControl?.tintColor = .secondaryLabel
+        }
         
         switch theme.currentImageSet {
         case .light:

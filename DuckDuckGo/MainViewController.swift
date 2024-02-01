@@ -31,6 +31,10 @@ import Persistence
 import PrivacyDashboard
 import Networking
 
+#if NETWORK_PROTECTION
+import NetworkProtection
+#endif
+
 // swiftlint:disable file_length
 // swiftlint:disable type_body_length
 class MainViewController: UIViewController {
@@ -98,6 +102,10 @@ class MainViewController: UIViewController {
     private var syncFeatureFlagsCancellable: AnyCancellable?
     private var favoritesDisplayModeCancellable: AnyCancellable?
     private var emailCancellables = Set<AnyCancellable>()
+    
+#if NETWORK_PROTECTION
+    private var netpCancellables = Set<AnyCancellable>()
+#endif
 
     private lazy var featureFlagger = AppDependencyProvider.shared.featureFlagger
 
@@ -139,6 +147,9 @@ class MainViewController: UIViewController {
     private var skipSERPFlow = true
         
     private var keyboardHeight: CGFloat = 0.0
+    
+    var postClear: (() -> Void)?
+    var clearInProgress = false
 
     required init?(coder: NSCoder) {
         fatalError("Use init?(code:")
@@ -243,6 +254,10 @@ class MainViewController: UIViewController {
         previewsSource.prepare()
         addLaunchTabNotificationObserver()
         subscribeToEmailProtectionStatusNotifications()
+
+#if NETWORK_PROTECTION && SUBSCRIPTION
+        subscribeToNetworkProtectionSubscriptionEvents()
+#endif
 
         findInPageView.delegate = self
         findInPageBottomLayoutConstraint.constant = 0
@@ -432,7 +447,6 @@ class MainViewController: UIViewController {
     @objc func onAddressBarPositionChanged() {
         viewCoordinator.moveAddressBarToPosition(appSettings.currentAddressBarPosition)
         refreshViewsBasedOnAddressBarPosition(appSettings.currentAddressBarPosition)
-        refreshWebViewContentInsets()
     }
 
     func refreshViewsBasedOnAddressBarPosition(_ position: AddressBarPosition) {
@@ -479,7 +493,6 @@ class MainViewController: UIViewController {
 
         findInPageBottomLayoutConstraint.constant = height
         keyboardHeight = height
-        refreshWebViewContentInsets()
 
         if let suggestionsTray = suggestionTrayController {
             let suggestionsFrameInView = suggestionsTray.view.convert(suggestionsTray.contentFrame, to: view)
@@ -644,7 +657,7 @@ class MainViewController: UIViewController {
             guard let tab = tabManager.current(createIfNeeded: true) else {
                 fatalError("Unable to create tab")
             }
-            addToWebViewContainer(tab: tab)
+            attachTab(tab: tab)
             refreshControls()
         } else {
             attachHomeScreen()
@@ -775,22 +788,30 @@ class MainViewController: UIViewController {
     }
 
     func loadUrlInNewTab(_ url: URL, reuseExisting: Bool = false, inheritedAttribution: AdClickAttributionLogic.State?) {
-        allowContentUnderflow = false
-        viewCoordinator.navigationBarContainer.alpha = 1
-        loadViewIfNeeded()
-        if reuseExisting, let existing = tabManager.first(withUrl: url) {
-            selectTab(existing)
-            return
-        } else if reuseExisting, let existing = tabManager.firstHomeTab() {
-            tabManager.selectTab(existing)
-            loadUrl(url)
-        } else {
-            addTab(url: url, inheritedAttribution: inheritedAttribution)
+        func worker() {
+            allowContentUnderflow = false
+            viewCoordinator.navigationBarContainer.alpha = 1
+            loadViewIfNeeded()
+            if reuseExisting, let existing = tabManager.first(withUrl: url) {
+                selectTab(existing)
+                return
+            } else if reuseExisting, let existing = tabManager.firstHomeTab() {
+                tabManager.selectTab(existing)
+                loadUrl(url)
+            } else {
+                addTab(url: url, inheritedAttribution: inheritedAttribution)
+            }
+            refreshOmniBar()
+            refreshTabIcon()
+            refreshControls()
+            tabsBarController?.refresh(tabsModel: tabManager.model)
         }
-        refreshOmniBar()
-        refreshTabIcon()
-        refreshControls()
-        tabsBarController?.refresh(tabsModel: tabManager.model)
+        
+        if clearInProgress {
+            postClear = worker
+        } else {
+            worker()
+        }
     }
     
     func enterSearch() {
@@ -838,9 +859,6 @@ class MainViewController: UIViewController {
             if tabManager.current(createIfNeeded: true) == nil {
                 fatalError("failed to create tab")
             }
-
-            // Likely this hasn't happened yet so the publishers won't be loaded and will block the webview from loading
-            _ = ContentBlocking.shared.contentBlockingManager.scheduleCompilation()
         }
 
         guard let tab = currentTab else { fatalError("no tab") }
@@ -853,21 +871,26 @@ class MainViewController: UIViewController {
     private func addTab(url: URL?, inheritedAttribution: AdClickAttributionLogic.State?) {
         let tab = tabManager.add(url: url, inheritedAttribution: inheritedAttribution)
         dismissOmniBar()
-        addToWebViewContainer(tab: tab)
+        attachTab(tab: tab)
     }
 
     func select(tabAt index: Int) {
         viewCoordinator.navigationBarContainer.alpha = 1
         allowContentUnderflow = false
-        let tab = tabManager.select(tabAt: index)
-        select(tab: tab)
+        
+        if tabManager.model.tabs.indices.contains(index) {
+            let tab = tabManager.select(tabAt: index)
+            select(tab: tab)
+        } else {
+            assertionFailure("Invalid index selected")
+        }
     }
 
     fileprivate func select(tab: TabViewController) {
         if tab.link == nil {
             attachHomeScreen()
         } else {
-            addToWebViewContainer(tab: tab)
+            attachTab(tab: tab)
             refreshControls()
         }
         tabsBarController?.refresh(tabsModel: tabManager.model, scrollToSelected: true)
@@ -876,21 +899,15 @@ class MainViewController: UIViewController {
         }
     }
 
-    private func addToWebViewContainer(tab: TabViewController) {
+    private func attachTab(tab: TabViewController) {
         removeHomeScreen()
         updateFindInPage()
         currentTab?.progressWorker.progressBar = nil
         currentTab?.chromeDelegate = nil
-        currentTab?.webView.scrollView.contentInsetAdjustmentBehavior = .never
-        
-        addChild(tab)
-        viewCoordinator.webViewContainer.subviews.forEach { $0.removeFromSuperview() }
-        viewCoordinator.webViewContainer.addSubview(tab.view)
-        tab.view.frame = self.viewCoordinator.webViewContainer.bounds
-        tab.didMove(toParent: self)
-        
+            
+        addToContentContainer(controller: tab)
+
         viewCoordinator.logoContainer.isHidden = true
-        viewCoordinator.contentContainer.isHidden = true
         
         tab.progressWorker.progressBar = viewCoordinator.progress
         chromeManager.attach(to: tab.webView.scrollView)
@@ -1229,6 +1246,50 @@ class MainViewController: UIViewController {
             .store(in: &emailCancellables)
     }
 
+#if NETWORK_PROTECTION && SUBSCRIPTION
+    private func subscribeToNetworkProtectionSubscriptionEvents() {
+        NotificationCenter.default.publisher(for: .accountDidSignIn)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                self?.onNetworkProtectionAccountSignIn(notification)
+            }
+            .store(in: &netpCancellables)
+        NotificationCenter.default.publisher(for: .accountDidSignOut)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                self?.onNetworkProtectionAccountSignOut(notification)
+            }
+            .store(in: &netpCancellables)
+    }
+    
+    @objc
+    private func onNetworkProtectionAccountSignIn(_ notification: Notification) {
+        guard let token = AccountManager().accessToken else {
+            assertionFailure("[NetP Subscription] AccountManager signed in but token could not be retrieved")
+            return
+        }
+
+        Task {
+            do {
+                try await NetworkProtectionCodeRedemptionCoordinator().exchange(accessToken: token)
+                print("[NetP Subscription] Exchanged access token for auth token successfully")
+            } catch {
+                print("[NetP Subscription] Failed to exchange access token for auth token: \(error)")
+            }
+        }
+    }
+
+    @objc
+    private func onNetworkProtectionAccountSignOut(_ notification: Notification) {
+        do {
+            try NetworkProtectionKeychainTokenStore().deleteToken()
+            print("[NetP Subscription] Deleted NetP auth token after signing out from Privacy Pro")
+        } catch {
+            print("[NetP Subscription] Failed to delete NetP auth token after signing out from Privacy Pro: \(error)")
+        }
+    }
+#endif
+
     @objc
     private func onDuckDuckGoEmailSignIn(_ notification: Notification) {
         fireEmailPixel(.emailEnabled, notification: notification)
@@ -1338,34 +1399,10 @@ extension MainViewController: BrowserChromeDelegate {
         }
            
         if animated {
-            UIView.animate(withDuration: ChromeAnimationConstants.duration, animations: updateBlock) { _ in
-                self.refreshWebViewContentInsets()
-            }
+            UIView.animate(withDuration: ChromeAnimationConstants.duration, animations: updateBlock)
         } else {
             updateBlock()
-            self.refreshWebViewContentInsets()
         }
-    }
-
-    func refreshWebViewContentInsets() {
-        guard let webView = currentTab?.webView else { return }
-
-        let top = viewCoordinator.statusBackground.frame.height
-        let bottom: CGFloat
-        if isToolbarHidden {
-            bottom = 0
-        } else if appSettings.currentAddressBarPosition.isBottom {
-            bottom = viewCoordinator.toolbar.frame.height
-                + viewCoordinator.navigationBarContainer.frame.height
-                + view.safeAreaInsets.bottom + additionalSafeAreaInsets.bottom
-                + keyboardHeight
-        } else {
-            bottom = viewCoordinator.toolbar.frame.height
-                + view.safeAreaInsets.bottom + additionalSafeAreaInsets.bottom
-                + keyboardHeight
-        }
-        
-        webView.scrollView.contentInset = .init(top: top, left: 0, bottom: bottom, right: 0)
     }
     
     func setNavigationBarHidden(_ hidden: Bool) {
@@ -1543,6 +1580,10 @@ extension MainViewController: OmniBarDelegate {
     }
     
     func onTextFieldWillBeginEditing(_ omniBar: OmniBar) {
+        if let currentTab {
+            viewCoordinator.omniBar.refreshText(forUrl: currentTab.url, forceFullURL: true)
+        }
+
         guard homeController == nil else { return }
         
         if !skipSERPFlow, isSERPPresented, let query = omniBar.textField.text {
@@ -1553,6 +1594,7 @@ extension MainViewController: OmniBarDelegate {
     }
 
     func onTextFieldDidBeginEditing(_ omniBar: OmniBar) -> Bool {
+
         let selectQueryText = !(isSERPPresented && !skipSERPFlow)
         skipSERPFlow = false
         
@@ -1733,7 +1775,7 @@ extension MainViewController: TabDelegate {
             guard self.tabManager.model.tabs.contains(newTab.tabModel) else { return }
 
             self.dismissOmniBar()
-            self.addToWebViewContainer(tab: newTab)
+            self.attachTab(tab: newTab)
             self.refreshOmniBar()
         }
 
@@ -1837,7 +1879,6 @@ extension MainViewController: TabDelegate {
 
     func showBars() {
         chromeManager.reset()
-        refreshWebViewContentInsets()
     }
     
     func tabDidRequestFindInPage(tab: TabViewController) {
@@ -1952,6 +1993,7 @@ extension MainViewController: TabSwitcherDelegate {
         hideSuggestionTray()
         tabManager.remove(at: index)
         updateCurrentTab()
+        tabsBarController?.refresh(tabsModel: tabManager.model)
     }
 
     func tabSwitcherDidRequestForgetAll(tabSwitcher: TabSwitcherViewController) {
@@ -2053,6 +2095,11 @@ extension MainViewController: AutoClearWorker {
     }
     
     func forgetData() {
+        guard !clearInProgress else {
+            assertionFailure("Shouldn't get called multiple times")
+            return
+        }
+        clearInProgress = true
         URLSession.shared.configuration.urlCache?.removeAllCachedResponses()
 
         let pixel = TimedPixel(.forgetAllDataCleared)
@@ -2067,6 +2114,10 @@ extension MainViewController: AutoClearWorker {
             }
 
             self.refreshUIAfterClear()
+            self.clearInProgress = false
+            
+            self.postClear?()
+            self.postClear = nil
         }
 
     }

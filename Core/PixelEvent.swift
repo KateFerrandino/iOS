@@ -32,6 +32,7 @@ extension Pixel {
         
         case appLaunch
         case refreshPressed
+        case pullToRefresh
         
         case forgetAllPressedBrowsing
         case forgetAllPressedTabSwitching
@@ -280,6 +281,8 @@ extension Pixel {
 
         case networkProtectionEnabledOnSearch
 
+        case networkProtectionBreakageReport
+
         case networkProtectionRekeyCompleted
 
         case networkProtectionTunnelConfigurationNoServerRegistrationInfo
@@ -309,6 +312,7 @@ extension Pixel {
         case networkProtectionKeychainErrorFailedToCastKeychainValueToData
         case networkProtectionKeychainReadError
         case networkProtectionKeychainWriteError
+        case networkProtectionKeychainUpdateError
         case networkProtectionKeychainDeleteError
 
         case networkProtectionWireguardErrorCannotLocateTunnelFileDescriptor
@@ -338,6 +342,7 @@ extension Pixel {
         case networkProtectionWaitlistTermsAccepted
         case networkProtectionWaitlistNotificationShown
         case networkProtectionWaitlistNotificationLaunched
+        case networkProtectionWaitlistRetriedInviteCodeRedemption
 
         case networkProtectionGeoswitchingOpened
         case networkProtectionGeoswitchingSetNearest
@@ -489,6 +494,13 @@ extension Pixel {
         case syncCredentialsFailed
         case syncSettingsFailed
         case syncSettingsMetadataUpdateFailed
+        case syncSignupError
+        case syncLoginError
+        case syncLogoutError
+        case syncUpdateDeviceError
+        case syncRemoveDeviceError
+        case syncDeleteAccountError
+        case syncLoginExistingAccountError
 
         case bookmarksCleanupFailed
         case bookmarksCleanupAttemptedWhileSyncWasEnabled
@@ -511,6 +523,8 @@ extension Pixel {
         case emailIncontextModalExitEarlyContinue
 
         case compilationFailed
+
+        case appRatingPromptFetchError
     }
     
 }
@@ -523,7 +537,8 @@ extension Pixel.Event {
         switch self {
         case .appLaunch: return "ml"
         case .refreshPressed: return "m_r"
-            
+        case .pullToRefresh: return "m_pull-to-reload"
+
         case .forgetAllPressedBrowsing: return "mf_bp"
         case .forgetAllPressedTabSwitching: return "mf_tp"
         case .forgetAllExecuted: return "mf"
@@ -771,6 +786,7 @@ extension Pixel.Event {
         case .networkProtectionLatencyError: return "m_netp_ev_latency_error_d"
         case .networkProtectionRekeyCompleted: return "m_netp_rekey_completed"
         case .networkProtectionEnabledOnSearch: return "m_netp_ev_enabled_on_search"
+        case .networkProtectionBreakageReport: return "m_vpn_breakage_report"
         case .networkProtectionTunnelConfigurationNoServerRegistrationInfo: return "m_netp_tunnel_config_error_no_server_registration_info"
         case .networkProtectionTunnelConfigurationCouldNotSelectClosestServer: return "m_netp_tunnel_config_error_could_not_select_closest_server"
         case .networkProtectionTunnelConfigurationCouldNotGetPeerPublicKey: return "m_netp_tunnel_config_error_could_not_get_peer_public_key"
@@ -798,6 +814,7 @@ extension Pixel.Event {
         case .networkProtectionKeychainErrorFailedToCastKeychainValueToData: return "m_netp_keychain_error_failed_to_cast_keychain_value_to_data"
         case .networkProtectionKeychainReadError: return "m_netp_keychain_error_read_failed"
         case .networkProtectionKeychainWriteError: return "m_netp_keychain_error_write_failed"
+        case .networkProtectionKeychainUpdateError: return "m_netp_keychain_error_update_failed"
         case .networkProtectionKeychainDeleteError: return "m_netp_keychain_error_delete_failed"
         case .networkProtectionWireguardErrorCannotLocateTunnelFileDescriptor: return "m_netp_wireguard_error_cannot_locate_tunnel_file_descriptor"
         case .networkProtectionWireguardErrorInvalidState: return "m_netp_wireguard_error_invalid_state"
@@ -821,6 +838,7 @@ extension Pixel.Event {
         case .networkProtectionWaitlistTermsAccepted: return "m_netp_waitlist_terms_accepted"
         case .networkProtectionWaitlistNotificationShown: return "m_netp_waitlist_notification_shown"
         case .networkProtectionWaitlistNotificationLaunched: return "m_netp_waitlist_notification_launched"
+        case .networkProtectionWaitlistRetriedInviteCodeRedemption: return "m_netp_waitlist_retried_invite_code_redemption"
 
         case .networkProtectionGeoswitchingOpened: return "m_netp_imp_geoswitching"
         case .networkProtectionGeoswitchingSetNearest: return "m_netp_ev_geoswitching_set_nearest"
@@ -969,6 +987,13 @@ extension Pixel.Event {
         case .syncCredentialsFailed: return "m_d_sync_credentials_failed"
         case .syncSettingsFailed: return "m_d_sync_settings_failed"
         case .syncSettingsMetadataUpdateFailed: return "m_d_sync_settings_metadata_update_failed"
+        case .syncSignupError: return "m_d_sync_signup_error"
+        case .syncLoginError: return "m_d_sync_login_error"
+        case .syncLogoutError: return "m_d_sync_logout_error"
+        case .syncUpdateDeviceError: return "m_d_sync_update_device_error"
+        case .syncRemoveDeviceError: return "m_d_sync_remove_device_error"
+        case .syncDeleteAccountError: return "m_d_sync_delete_account_error"
+        case .syncLoginExistingAccountError: return "m_d_sync_login_existing_account_error"
 
 
         case .bookmarksCleanupFailed: return "m_d_bookmarks_cleanup_failed"
@@ -996,6 +1021,8 @@ extension Pixel.Event {
         // MARK: - Return user measurement
         case .debugReturnUserAddATB: return "m_debug_return_user_add_atb"
         case .debugReturnUserUpdateATB: return "m_debug_return_user_update_atb"
+            
+        case .appRatingPromptFetchError: return "m_d_app_rating_prompt_fetch_error"
         }
         
     }

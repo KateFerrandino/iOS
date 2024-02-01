@@ -43,6 +43,7 @@ final class SettingsViewModel: ObservableObject {
     private var legacyViewProvider: SettingsLegacyViewProvider
     private lazy var versionProvider: AppVersion = AppVersion.shared
     private var accountManager: AccountManager
+    private let voiceSearchHelper: VoiceSearchHelperProtocol
 
 #if NETWORK_PROTECTION
     private let connectionObserver = ConnectionStatusObserverThroughSession()
@@ -53,15 +54,21 @@ final class SettingsViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     // Defaults
-    @UserDefaultsWrapper(key: .privacyProHasActiveSubscription, defaultValue: false)
+    @UserDefaultsWrapper(key: .subscriptionIsActive, defaultValue: false)
     static private var cachedHasActiveSubscription: Bool
 
-    // Closures to interact with legacy view controllers throught the container
+    // Closures to interact with legacy view controllers through the container
     var onRequestPushLegacyView: ((UIViewController) -> Void)?
     var onRequestPresentLegacyView: ((UIViewController, _ modal: Bool) -> Void)?
     var onRequestPopLegacyView: (() -> Void)?
     var onRequestDismissSettings: (() -> Void)?
     
+    // SwiftUI Programatic Navigation Variables
+    // Add more views as needed here...    
+    @Published var shouldNavigateToDBP = false
+    @Published var shouldNavigateToITP = false
+    
+    // Subscription Entitlement names: TBD
     static let entitlementNames = ["dummy1", "dummy2", "dummy3"]
     
     // Our View State
@@ -81,6 +88,12 @@ final class SettingsViewModel: ObservableObject {
     }
                 
     var shouldShowNoMicrophonePermissionAlert: Bool = false
+    
+    // Used to automatically navigate on Appear to a specific section
+    enum SettingsSection: String {
+        case none, netP, dbp, itp
+    }
+    @Published var onAppearNavigationTarget: SettingsSection
     
     // MARK: Bindings
     var themeBinding: Binding<ThemeName> {
@@ -148,7 +161,7 @@ final class SettingsViewModel: ObservableObject {
                     self.enableVoiceSearch { [weak self] result in
                         DispatchQueue.main.async {
                             self?.state.voiceSearchEnabled = result
-                            self?.appSettings.voiceSearchEnabled = result
+                            self?.voiceSearchHelper.enableVoiceSearch(true)
                             if !result {
                                 // Permission is denied
                                 self?.shouldShowNoMicrophonePermissionAlert = true
@@ -156,7 +169,7 @@ final class SettingsViewModel: ObservableObject {
                         }
                     }
                 } else {
-                    self.appSettings.voiceSearchEnabled = false
+                    self.voiceSearchHelper.enableVoiceSearch(false)
                     self.state.voiceSearchEnabled = false
                 }
             }
@@ -183,10 +196,16 @@ final class SettingsViewModel: ObservableObject {
     }
 
     // MARK: Default Init
-    init(state: SettingsState? = nil, legacyViewProvider: SettingsLegacyViewProvider, accountManager: AccountManager) {
+    init(state: SettingsState? = nil,
+         legacyViewProvider: SettingsLegacyViewProvider,
+         accountManager: AccountManager,
+         voiceSearchHelper: VoiceSearchHelperProtocol = AppDependencyProvider.shared.voiceSearchHelper,
+         navigateOnAppearDestination: SettingsSection = .none) {
         self.state = SettingsState.defaults
         self.legacyViewProvider = legacyViewProvider
         self.accountManager = accountManager
+        self.voiceSearchHelper = voiceSearchHelper
+        self.onAppearNavigationTarget = navigateOnAppearDestination
     }
 }
  
@@ -213,11 +232,11 @@ extension SettingsViewModel {
             activeWebsiteAccount: nil,
             version: versionProvider.versionAndBuildNumber,
             debugModeEnabled: featureFlagger.isFeatureOn(.debugMenu) || isDebugBuild,
-            voiceSearchEnabled: AppDependencyProvider.shared.voiceSearchHelper.isSpeechRecognizerAvailable,
-            speechRecognitionEnabled: AppDependencyProvider.shared.voiceSearchHelper.isSpeechRecognizerAvailable,
+            voiceSearchEnabled: AppDependencyProvider.shared.voiceSearchHelper.isVoiceSearchEnabled,
+            speechRecognitionAvailable: AppDependencyProvider.shared.voiceSearchHelper.isSpeechRecognizerAvailable,
             loginsEnabled: featureFlagger.isFeatureOn(.autofillAccessCredentialManagement),
             networkProtection: getNetworkProtectionState(),
-            privacyPro: getPrivacyProState(),
+            subscription: getSubscriptionState(),
             sync: getSyncState()
         )
         
@@ -226,7 +245,7 @@ extension SettingsViewModel {
         #if SUBSCRIPTION
         if #available(iOS 15, *) {
             Task {
-                if state.privacyPro.enabled {
+                if state.subscription.enabled {
                     await setupSubscriptionEnvironment()
                 }
             }
@@ -245,15 +264,15 @@ extension SettingsViewModel {
         return SettingsState.NetworkProtection(enabled: enabled, status: "")
     }
     
-    private func getPrivacyProState() -> SettingsState.PrivacyPro {
+    private func getSubscriptionState() -> SettingsState.Subscription {
         var enabled = false
         var canPurchase = false
-        var hasActiveSubscription = Self.cachedHasActiveSubscription
+        let hasActiveSubscription = Self.cachedHasActiveSubscription
         #if SUBSCRIPTION
-            enabled = featureFlagger.isFeatureOn(.privacyPro)
+            enabled = featureFlagger.isFeatureOn(.subscription)
             canPurchase = SubscriptionPurchaseEnvironment.canPurchase
         #endif
-        return SettingsState.PrivacyPro(enabled: enabled,
+        return SettingsState.Subscription(enabled: enabled,
                                         canPurchase: canPurchase,
                                         hasActiveSubscription: hasActiveSubscription)
     }
@@ -283,11 +302,9 @@ extension SettingsViewModel {
                 completion(false)
                 return
             }
-            AppDependencyProvider.shared.voiceSearchHelper.enableVoiceSearch(true)
             completion(true)
         }
     }
-    
 
     #if SUBSCRIPTION
     @available(iOS 15.0, *)
@@ -307,13 +324,13 @@ extension SettingsViewModel {
                 
                 // Check for valid entitlements
                 let hasEntitlements = await AccountManager().hasEntitlement(for: Self.entitlementNames.first!)
-                self.state.privacyPro.hasActiveSubscription = hasEntitlements ? true : false
+                self.state.subscription.hasActiveSubscription = hasEntitlements ? true : false
                 
                 // Cache Subscription state
-                Self.cachedHasActiveSubscription = self.state.privacyPro.hasActiveSubscription
+                Self.cachedHasActiveSubscription = self.state.subscription.hasActiveSubscription
                 
                 // Enable Subscription purchase if there's no active subscription
-                if self.state.privacyPro.hasActiveSubscription == false {
+                if self.state.subscription.hasActiveSubscription == false {
                     setupSubscriptionPurchaseOptions()
                 }
             }
@@ -324,11 +341,11 @@ extension SettingsViewModel {
     
     @available(iOS 15.0, *)
     private func setupSubscriptionPurchaseOptions() {
-        self.state.privacyPro.hasActiveSubscription = false
+        self.state.subscription.hasActiveSubscription = false
         PurchaseManager.shared.$availableProducts
             .receive(on: RunLoop.main)
             .sink { [weak self] products in
-                self?.state.privacyPro.canPurchase = !products.isEmpty
+                self?.state.subscription.canPurchase = !products.isEmpty
             }.store(in: &cancellables)
     }
     #endif
@@ -348,7 +365,6 @@ extension SettingsViewModel {
         }
     }
     #endif
-    
 }
 
 // MARK: Subscribers
@@ -365,7 +381,7 @@ extension SettingsViewModel {
             }
             .store(in: &cancellables)
     #endif
-        
+
     }
 }
 
@@ -374,6 +390,7 @@ extension SettingsViewModel {
     
     func onAppear() {
         initState()
+        Task { await MainActor.run { navigateOnAppear() } }
     }
     
     func setAsDefaultBrowser() {
@@ -399,6 +416,25 @@ extension SettingsViewModel {
     
     @MainActor func dismissSettings() {
         onRequestDismissSettings?()
+    }
+
+    @MainActor
+    private func navigateOnAppear() {
+        // We need a short delay to let the SwifttUI view lifecycle complete
+        // Otherwise the transition can be inconsistent
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            switch self.onAppearNavigationTarget {
+            case .netP:
+                self.presentLegacyView(.netP)
+            case .dbp:
+                self.shouldNavigateToDBP = true
+            case .itp:
+                self.shouldNavigateToITP = true
+            default:
+                break
+            }
+            self.onAppearNavigationTarget = .none
+        }
     }
 
 }
