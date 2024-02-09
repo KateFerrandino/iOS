@@ -299,12 +299,14 @@ struct HomeMessageView_Previews: PreviewProvider {
     static let critical: RemoteMessageModelType =
         .medium(titleText: "Critical",
                 descriptionText: "Description text",
-                placeholder: .criticalUpdate)
+                placeholder: .criticalUpdate,
+                image: nil)
 
     static let bigSingle: RemoteMessageModelType =
         .bigSingleAction(titleText: "Big Single",
                          descriptionText: "This is a description",
                          placeholder: .ddgAnnounce,
+                         image: nil,
                          primaryActionText: "Primary",
                          primaryAction: .dismiss)
 
@@ -312,6 +314,7 @@ struct HomeMessageView_Previews: PreviewProvider {
         .bigTwoAction(titleText: "Big Two",
                       descriptionText: "This is a <b>big</b> two style",
                       placeholder: .macComputer,
+                      image: nil,
                       primaryActionText: "App Store",
                       primaryAction: .appStore,
                       secondaryActionText: "Dismiss",
@@ -321,6 +324,7 @@ struct HomeMessageView_Previews: PreviewProvider {
         .promoSingleAction(titleText: "Promotional",
                            descriptionText: "Description <b>with bold</b> to make a statement.",
                            placeholder: .newForMacAndWindows,
+                           image: nil,
                            actionText: "Share",
                            action: .share(value: "value", title: "title"))
 

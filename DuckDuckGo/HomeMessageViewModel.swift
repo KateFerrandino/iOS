@@ -37,13 +37,13 @@ struct HomeMessageViewModel {
         switch modelType {
         case .small:
             return nil
-        case .medium(_, _, let placeholder):
+        case .medium(_, _, let placeholder, _):
             return placeholder.rawValue
-        case .bigSingleAction(_, _, let placeholder, _, _):
+        case .bigSingleAction(_, _, let placeholder, _, _, _):
             return placeholder.rawValue
-        case .bigTwoAction(_, _, let placeholder, _, _, _, _):
+        case .bigTwoAction(_, _, let placeholder, _, _, _, _, _):
             return placeholder.rawValue
-        case .promoSingleAction(_, _, let placeholder, _, _):
+        case .promoSingleAction(_, _, let placeholder, _, _, _):
             return placeholder.rawValue
         }
     }
@@ -57,13 +57,13 @@ struct HomeMessageViewModel {
         switch modelType {
         case .small(let titleText, _):
             return titleText
-        case .medium(let titleText, _, _):
+        case .medium(let titleText, _, _, _):
             return titleText
-        case .bigSingleAction(let titleText, _, _, _, _):
+        case .bigSingleAction(let titleText, _, _, _, _, _):
             return titleText
-        case .bigTwoAction(let titleText, _, _, _, _, _, _):
+        case .bigTwoAction(let titleText, _, _, _, _, _, _, _):
             return titleText
-        case .promoSingleAction(let titleText, _, _, _, _):
+        case .promoSingleAction(let titleText, _, _, _, _, _):
             return titleText
         }
     }
@@ -73,13 +73,13 @@ struct HomeMessageViewModel {
             switch modelType {
             case .small(_, let descriptionText):
                 return descriptionText
-            case .medium(_, let descriptionText, _):
+            case .medium(_, let descriptionText, _, _):
                 return descriptionText
-            case .bigSingleAction(_, let descriptionText, _, _, _):
+            case .bigSingleAction(_, let descriptionText, _, _, _, _):
                 return descriptionText
-            case .bigTwoAction(_, let descriptionText, _, _, _, _, _):
+            case .bigTwoAction(_, let descriptionText, _, _, _, _, _, _):
                 return descriptionText
-            case .promoSingleAction(_, let descriptionText, _, _, _):
+            case .promoSingleAction(_, let descriptionText, _, _, _, _):
                 return descriptionText
             }
         }()
@@ -94,14 +94,14 @@ struct HomeMessageViewModel {
             return []
         case .medium:
             return []
-        case .bigSingleAction(_, _, _, let primaryActionText, let primaryAction):
+        case .bigSingleAction(_, _, _, _, let primaryActionText, let primaryAction):
             return [
                 HomeMessageButtonViewModel(title: primaryActionText,
                                            actionStyle: primaryAction.actionStyle,
                                            action: mapActionToViewModel(remoteAction: primaryAction, buttonAction:
                                                 .primaryAction(isShare: primaryAction.isShare), onDidClose: onDidClose))
             ]
-        case .bigTwoAction(_, _, _, let primaryActionText, let primaryAction, let secondaryActionText, let secondaryAction):
+        case .bigTwoAction(_, _, _, _, let primaryActionText, let primaryAction, let secondaryActionText, let secondaryAction):
             return [
                 HomeMessageButtonViewModel(title: primaryActionText,
                                            actionStyle: primaryAction.actionStyle,
@@ -113,7 +113,7 @@ struct HomeMessageViewModel {
                                            action: mapActionToViewModel(remoteAction: secondaryAction, buttonAction:
                                                 .secondaryAction(isShare: primaryAction.isShare), onDidClose: onDidClose))
             ]
-        case .promoSingleAction(_, _, _, let actionText, let action):
+        case .promoSingleAction(_, _, _, _, let actionText, let action):
             return [
                 HomeMessageButtonViewModel(title: actionText,
                                            actionStyle: action.actionStyle,

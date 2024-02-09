@@ -36,24 +36,20 @@ public struct RemoteMessageRequest {
 
     public init() { }
 
-    public func getRemoteMessage(completionHandler: @escaping (Result<RemoteMessageResponse.JsonRemoteMessagingConfig, RemoteMessageResponse.StatusError>) -> Void) {
+    public func getRemoteMessage() async -> Result<RemoteMessageResponse.JsonRemoteMessagingConfig, RemoteMessageResponse.StatusError> {
         let configuration = APIRequest.Configuration(url: endpoint)
         let request = APIRequest(configuration: configuration, urlSession: .session())
         
-        request.fetch { response, error in
-            guard let data = response?.data, error == nil else {
-                completionHandler(.failure(.noData))
-                return
-            }
-
-            do {
-                let decoder  = JSONDecoder()
-                let response = try decoder.decode(RemoteMessageResponse.JsonRemoteMessagingConfig.self, from: data)
-
-                completionHandler(.success(response))
-            } catch {
-                completionHandler(.failure(.parsingFailed))
-            }
+        guard let fetchResult = try? await request.fetch(),
+              let data = fetchResult.data else {
+            return .failure(.noData)
         }
+
+        let decoder = JSONDecoder()
+        guard let response = try? decoder.decode(RemoteMessageResponse.JsonRemoteMessagingConfig.self, from: data) else {
+            return .failure(.parsingFailed)
+        }
+        
+        return .success(response)
     }
 }

@@ -195,15 +195,12 @@ struct RemoteMessaging {
     }
 
     static func fetchRemoteMessages(remoteMessageRequest: RemoteMessageRequest) async -> Result<RemoteMessageResponse.JsonRemoteMessagingConfig, RemoteMessageResponse.StatusError> {
-        return await withCheckedContinuation { continuation in
-            remoteMessageRequest.getRemoteMessage(completionHandler: { result in
-                switch result {
-                case .success(let response):
-                    continuation.resume(returning: .success(response))
-                case .failure(let error):
-                    continuation.resume(returning: .failure(error))
-                }
-            })
+        switch await remoteMessageRequest.getRemoteMessage() {
+        case .success(let response):
+            return .success(response)
+        case .failure(let error):
+            return .failure(error)
         }
     }
+    
 }

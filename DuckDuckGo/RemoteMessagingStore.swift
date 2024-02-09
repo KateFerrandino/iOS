@@ -50,16 +50,14 @@ final class RemoteMessagingStore: RemoteMessagingStoring {
     func saveProcessedResult(_ processorResult: RemoteMessagingConfigProcessor.ProcessorResult) {
         os_log("Remote messaging config - save processed version: %d", log: .remoteMessaging, type: .debug, processorResult.version)
         saveRemoteMessagingConfig(withVersion: processorResult.version)
+        deleteScheduledRemoteMessages()
 
         if let remoteMessage = processorResult.message {
-            deleteScheduledRemoteMessages()
             save(remoteMessage: remoteMessage)
 
             DispatchQueue.main.async {
                 self.notificationCenter.post(name: RemoteMessaging.Notifications.remoteMessagesDidChange, object: nil)
             }
-        } else {
-            deleteScheduledRemoteMessages()
         }
     }
 }
