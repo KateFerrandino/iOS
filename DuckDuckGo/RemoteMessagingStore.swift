@@ -270,7 +270,7 @@ extension RemoteMessagingStore {
         }
     }
 }
-
+    
 // MARK: - RemoteMessageManagedObject Private Interface
 
 extension RemoteMessagingStore {
