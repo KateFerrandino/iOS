@@ -8,6 +8,11 @@ on:
         required: true
         default: "Latest Alpha Group"
         type: string
+      overrideMasterCheck:
+        description: "Override Master Check"
+        required: false
+        default: false
+        type: boolean
   workflow_call:
     inputs:
       destination:
@@ -41,6 +46,7 @@ jobs:
     steps:
 
     - name: Assert main branch
+      if: ${{ github.event.inputs.overrideMasterCheck != 'true' }}
       run: |
         case "${{ github.ref }}" in
           *main) ;;
